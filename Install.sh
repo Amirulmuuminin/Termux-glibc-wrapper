@@ -44,14 +44,17 @@ grun-set() {
     # Check if the command is already patched in the alias file
     if ! grep -q "${target_cmd}()" ~/.grun_aliases 2>/dev/null; then
         # Append the function permanently to the alias file
+        # \$@ is escaped so it is written literally into the file
         cat << INNER_EOF >> ~/.grun_aliases
+
 $target_cmd() {
     grun "$real_path" "\$@"
 }
 INNER_EOF
     fi
 
-    # Inject the function into the current session immediately using eval
+    # Inject the function into the current session immediately
+    # Using escaped quotes to ensure multi-arguments are handled correctly
     eval "$target_cmd() { grun \"$real_path\" \"\$@\"; }"
 
     echo "Success: '$target_cmd' is now running via grun."
@@ -69,7 +72,7 @@ grun-list() {
 }
 EOF
 
-# 4. Refresh the current session
+# 4. Refresh the current session for the installer script
 source ~/.bashrc
 
 echo "--------------------------------------------------"
