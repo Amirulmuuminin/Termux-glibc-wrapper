@@ -13,19 +13,15 @@ touch ~/.grun_aliases
 # 3. Write the full configuration to .bashrc
 cat << 'EOF' > ~/.bashrc
 # --- 1. ENV CONFIGURATION ---
-# Add glibc to PATH and unset LD_PRELOAD for compatibility
 export PATH=$PREFIX/glibc/bin:$PATH
 unset LD_PRELOAD
 
 # --- 2. LOAD EXTERNAL ALIASES ---
-# Loads the specific file where patched commands are stored
 if [ -f ~/.grun_aliases ]; then
     . ~/.grun_aliases
 fi
 
 # --- 3. CORE FUNCTION: grun-set ---
-# Usage: grun-set <command_name>
-# This overrides a command to run through glibc-runner (grun)
 grun-set() {
     local target_cmd=$1
     if [ -z "$target_cmd" ]; then
@@ -33,7 +29,7 @@ grun-set() {
         return 1
     fi
 
-    # Find the absolute path of the original binary
+    # 1. Get the absolute path
     local real_path=$(command -v "$target_cmd")
 
     if [ -z "$real_path" ]; then
@@ -41,41 +37,38 @@ grun-set() {
         return 1
     fi
 
-    # Check if the command is already patched in the alias file
-    if ! grep -q "${target_cmd}()" ~/.grun_aliases 2>/dev/null; then
-        # Append the function permanently to the alias file
-        # \$@ is escaped so it is written literally into the file
-        cat << INNER_EOF >> ~/.grun_aliases
+    # Remove old entry if exists (clean update)
+    if [ -f ~/.grun_aliases ]; then
+        sed -i "/$target_cmd() {/,/}/d" ~/.grun_aliases
+    fi
 
+    # 2. Append: grun + path + all arguments ($@)
+    cat << INNER_EOF >> ~/.grun_aliases
 $target_cmd() {
     grun "$real_path" "\$@"
 }
 INNER_EOF
-    fi
 
-    # Inject the function into the current session immediately
-    # Using escaped quotes to ensure multi-arguments are handled correctly
+    # 3. Activate instantly in the current session
     eval "$target_cmd() { grun \"$real_path\" \"\$@\"; }"
 
-    echo "Success: '$target_cmd' is now running via grun."
+    echo "Success: '$target_cmd' is now managed by grun."
 }
 
 # --- 4. UTILITY: grun-list ---
-# List all commands currently managed by grun-set
 grun-list() {
     if [ -s ~/.grun_aliases ]; then
-        echo "Commands patched to run via grun:"
+        echo "Currently patched commands:"
         grep "()" ~/.grun_aliases | sed 's/() {//g'
     else
-        echo "No commands have been patched yet."
+        echo "No commands patched yet."
     fi
 }
 EOF
 
-# 4. Refresh the current session for the installer script
+# 4. Refresh session for the first time
 source ~/.bashrc
 
 echo "--------------------------------------------------"
-echo "Setup Complete! Glibc environment & 'grun-set' are ready."
-echo "Example usage: grun-set bun"
-echo "To see patched commands, type: grun-list"
+echo "Installation Finished!"
+echo "Now you can run: grun-set bun"
