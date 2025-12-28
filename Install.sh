@@ -29,52 +29,63 @@ grun-set() {
         return 1
     fi
 
-    # MENCARI PATH ASLI: 
-    # 'type -p' atau 'command -v' yang dipaksa mencari file fisik, bukan fungsi/alias
-    local real_path=$(unset -f $target_cmd; unalias $target_cmd 2>/dev/null; command -v "$target_cmd")
-
-    if [ -z "$real_path" ] || [ "$real_path" == "$target_cmd" ]; then
-        # Jika cara di atas gagal, coba cari lewat PATH sistem murni
-        real_path=$(PATH=$(getconf PATH):$PATH command -v "$target_cmd")
-    fi
-
-    if [ -z "$real_path" ]; then
-        echo "Error: Binary path for '$target_cmd' not found."
+    # Check if already patched to avoid duplicates
+    if grep -q "${target_cmd}()" ~/.grun_aliases 2>/dev/null; then
+        echo "Warning: Command '$target_cmd' is already patched in ~/.grun_aliases."
+        echo "Use 'grun-unset $target_cmd' first if you want to re-patch."
         return 1
     fi
 
-    # Hapus entri lama agar bersih
-    if [ -f ~/.grun_aliases ]; then
-        sed -i "/$target_cmd() {/,/}/d" ~/.grun_aliases
+    # Get the real binary path using which (ignoring functions/aliases)
+    local real_path=$(which -a "$target_cmd" | grep -v "function" | head -n 1)
+
+    if [ -z "$real_path" ]; then
+        echo "Error: Binary for '$target_cmd' not found."
+        return 1
     fi
 
-    # Simpan path absolut yang ditemukan (Contoh: /data/data/.../.bun/bin/bun)
+    # Append to alias file: grun + path + all arguments
     cat << INNER_EOF >> ~/.grun_aliases
 $target_cmd() {
     grun "$real_path" "\$@"
 }
 INNER_EOF
 
-    # Aktifkan langsung di sesi saat ini
-    eval "$target_cmd() { grun \"$real_path\" \"\$@\"; }"
-
-    echo "Success: '$target_cmd' (at $real_path) is now managed by grun."
+    # Apply immediately
+    source ~/.grun_aliases
+    echo "Success: '$target_cmd' is now patched to $real_path"
 }
 
-# --- 4. UTILITY: grun-list ---
+# --- 4. CORE FUNCTION: grun-unset ---
+grun-unset() {
+    local target_cmd=$1
+    if [ -z "$target_cmd" ]; then
+        echo "Usage: grun-unset <command_name>"
+        return 1
+    fi
+
+    if [ -f ~/.grun_aliases ]; then
+        # Remove the function block from the file
+        sed -i "/$target_cmd() {/,/}/d" ~/.grun_aliases
+        # Remove from current session
+        unset -f "$target_cmd"
+        echo "Success: Patch for '$target_cmd' removed."
+        source ~/.bashrc
+    fi
+}
+
+# --- 5. UTILITY: grun-list ---
 grun-list() {
     if [ -s ~/.grun_aliases ]; then
-        echo "Currently patched commands:"
+        echo "Patched commands:"
         grep "()" ~/.grun_aliases | sed 's/() {//g'
     else
-        echo "No commands patched yet."
+        echo "No patches found."
     fi
 }
 EOF
 
-# 4. Refresh session
+# 4. Finalizing
 source ~/.bashrc
-
 echo "--------------------------------------------------"
-echo "Installation Finished!"
-echo "Now you can run: grun-set bun"
+echo "Setup Complete! Commands available: grun-set, grun-unset, grun-list"
