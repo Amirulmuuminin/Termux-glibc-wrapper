@@ -29,30 +29,36 @@ grun-set() {
         return 1
     fi
 
-    # 1. Get the absolute path
-    local real_path=$(command -v "$target_cmd")
+    # MENCARI PATH ASLI: 
+    # 'type -p' atau 'command -v' yang dipaksa mencari file fisik, bukan fungsi/alias
+    local real_path=$(unset -f $target_cmd; unalias $target_cmd 2>/dev/null; command -v "$target_cmd")
+
+    if [ -z "$real_path" ] || [ "$real_path" == "$target_cmd" ]; then
+        # Jika cara di atas gagal, coba cari lewat PATH sistem murni
+        real_path=$(PATH=$(getconf PATH):$PATH command -v "$target_cmd")
+    fi
 
     if [ -z "$real_path" ]; then
-        echo "Error: Command '$target_cmd' not found in PATH."
+        echo "Error: Binary path for '$target_cmd' not found."
         return 1
     fi
 
-    # Remove old entry if exists (clean update)
+    # Hapus entri lama agar bersih
     if [ -f ~/.grun_aliases ]; then
         sed -i "/$target_cmd() {/,/}/d" ~/.grun_aliases
     fi
 
-    # 2. Append: grun + path + all arguments ($@)
+    # Simpan path absolut yang ditemukan (Contoh: /data/data/.../.bun/bin/bun)
     cat << INNER_EOF >> ~/.grun_aliases
 $target_cmd() {
     grun "$real_path" "\$@"
 }
 INNER_EOF
 
-    # 3. Activate instantly in the current session
+    # Aktifkan langsung di sesi saat ini
     eval "$target_cmd() { grun \"$real_path\" \"\$@\"; }"
 
-    echo "Success: '$target_cmd' is now managed by grun."
+    echo "Success: '$target_cmd' (at $real_path) is now managed by grun."
 }
 
 # --- 4. UTILITY: grun-list ---
@@ -66,7 +72,7 @@ grun-list() {
 }
 EOF
 
-# 4. Refresh session for the first time
+# 4. Refresh session
 source ~/.bashrc
 
 echo "--------------------------------------------------"
